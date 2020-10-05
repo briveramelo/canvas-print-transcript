@@ -10,6 +10,14 @@ let getRawTranscript = function()
     return arr.join(" ");
 }
 
+function getFileName()
+{
+    let title = document.getElementsByClassName("comp titleLabel pull-left")[0].innerText;
+    let titleNum = title.split(" ")[0];
+    let titleLabel = title.substring(titleNum.length, title.length).replace("-", "").replace(/\s+/g, '').replace(",","");
+    return `${titleNum}_mgt6051_${titleLabel}.pdf`;
+}
+
 let getTimeAccountedTranscript = function(timeGrouping_sec, onGetTranscript)
 {
     let momentUrl = "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js";
@@ -89,7 +97,7 @@ let makePdf = function (textToPrint) {
             textPos.y = defaultTextPos.y;
         }
         writeLines(doc, textToPrint, 6, 175, textPos);
-        doc.save(`MGT6051_LectureVideoTranscript.pdf`);
+        doc.save(getFileName());
     });
 }
 
