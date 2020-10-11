@@ -51,7 +51,9 @@ let getTimeAccountedTranscript = function(timeGrouping_sec, onGetText, onGetTran
         let elms = $(".cielo24-vwrap-sentence");
         for (let i = 0; i < elms.length; i++) {
             refObj.text = elms[i].innerText;
+            refObj.textTime = getTextTimeObj(refObj.text);
             refObj.nextText = i + 1 < elms.length ? elms[i+1].innerText : null;
+            refObj.nextTextTime = getTextTimeObj(refObj.nextText);
             onGetText(refObj);
         }
 
@@ -109,19 +111,20 @@ function makeSubtitles(subtitleTextArray)
 }
 
 getTimeAccountedTranscript(30, (refObj)=>{
-    if (refObj.text) {
-        let textTime = getTextTimeObj(refObj.text);
-        if(textTime)
-        {
-            if(textTime.timeStamp.diff(refObj.lastPrintedMoment, 'seconds') <= refObj.timeGrouping_sec)
-            {
-                refObj.arr.push(textTime.text);
-                return;
-            }
-            refObj.lastPrintedMoment = textTime.timeStamp;
-        }
-        refObj.arr.push(`\n${refObj.text}`);
+    if (!refObj.text) {
+        return;
     }
+
+    if(refObj.textTime)
+    {
+        if(refObj.textTime.timeStamp.diff(refObj.lastPrintedMoment, 'seconds') <= refObj.timeGrouping_sec)
+        {
+            refObj.arr.push(refObj.textTime.text);
+            return;
+        }
+        refObj.lastPrintedMoment = refObj.textTime.timeStamp;
+    }
+    refObj.arr.push(`\n${refObj.text}`);
 }, (transArray)=>{
     if(transArray)
     {
@@ -129,48 +132,98 @@ getTimeAccountedTranscript(30, (refObj)=>{
     }
 });
 
-getTimeAccountedTranscript(6.0,(refObj)=>{
-    if (refObj.text) {
-        let textTime = getTextTimeObj(refObj.text);
-        let nextTextTime = getTextTimeObj(refObj.nextText) ?? {timeStamp: moment(refObj.lastPrintedMoment).add(24, 'seconds')};
-        let timeDiff_sec = nextTextTime.timeStamp.diff(textTime.timeStamp, 'seconds');
+getTimeAccountedTranscript(6.0,(refObj) => {
+    if (!refObj.text) {
+        return;
+    }
 
-        let numCycles = Math.floor(timeDiff_sec / refObj.timeGrouping_sec);
-        if(numCycles < 1) numCycles = 1;
-        let wordsArray = textTime.text.split(" ");
-        let numWordsPerCycle = wordsArray.length / numCycles;
-        function getCycleTextTime(index)
-        {
-            let firstIndex = index * numWordsPerCycle;
-            let lastIndex = (index + 1) * numWordsPerCycle;
-            let subWordArray = wordsArray.slice(firstIndex, lastIndex);
-            let endMoment = moment(refObj.lastPrintedMoment).add(refObj.timeGrouping_sec, 'seconds');
-            if(endMoment.valueOf() > nextTextTime.timeStamp.valueOf())
+    function getFinalCharacterIndex(text, numCycles, previousCharacterIndex)
+    {
+        let numCharactersPerCycle = Math.ceil(text.length / numCycles);
+        let finalCharacterIndex = previousCharacterIndex + numCharactersPerCycle;
+        while(true) {
+            if(finalCharacterIndex >= text.length)
             {
-                endMoment = nextTextTime.timeStamp
-            }
-            return {
-                timeStamp: endMoment,
-                text: subWordArray.join(" "),
-                isLast: lastIndex >= wordsArray.length
-            };
-        }
-        let i = 0;
-        while (true)
-        {
-            let iterTextTime = getCycleTextTime(i);
-            let numLinesPerSubtitle = 4;
-            let currentSubtitleIndex = Math.floor(refObj.arr.length / numLinesPerSubtitle);
-            refObj.arr.push(`${currentSubtitleIndex}`);
-            refObj.arr.push(`\n${refObj.lastPrintedMoment.format('HH:mm:ss,SSS')} --> ${iterTextTime.timeStamp.format('HH:mm:ss,SSS')}`);
-            refObj.arr.push(`\n${iterTextTime.text}`);
-            refObj.arr.push(`\n\n`);
-            refObj.lastPrintedMoment = iterTextTime.timeStamp;
-            if(iterTextTime.isLast)
-            {
+                finalCharacterIndex = text.length - 1;
                 break;
             }
-            i++;
+
+            if(text[finalCharacterIndex] === " ")
+            {
+                finalCharacterIndex--;
+                break;
+            }
+
+            finalCharacterIndex++;
+        }
+        return finalCharacterIndex;
+    }
+
+    function getFinalWordIndex(text, finalCharacterIndex)
+    {
+        let wordsArray = text.split(" ");
+        let wordsLengthArray = [];
+        for (let i = 0; i < wordsArray.length; i++)
+        {
+            let previousLength = i - 1 < 0 ? 0 : wordsLengthArray[i - 1];
+            let currentLength = wordsArray[i].length + previousLength;
+            currentLength += i === wordsArray.length - 1 ? 0 : 1; //must re-add the " " space character for all non-terminal words
+            wordsLengthArray.push(currentLength);
+            if(finalCharacterIndex <= wordsLengthArray[i])
+            {
+                return i;
+            }
+        }
+        return wordsLengthArray.length - 1;
+    }
+
+    function getCycleTextTime(wordsArray, refObj, cycleData)
+    {
+        let firstWordIndex = cycleData.previousWordIndex > 0 ? cycleData.previousWordIndex + 1 : 0;
+        let finalCharacterIndex = getFinalCharacterIndex(refObj.textTime.text, cycleData.numCycles, cycleData.previousCharacterIndex);
+        let finalWordIndex = getFinalWordIndex(refObj.textTime.text, finalCharacterIndex);
+        let subWordArray = wordsArray.slice(firstWordIndex, finalWordIndex + 1);
+        let endMoment = moment(refObj.lastPrintedMoment).add(refObj.timeGrouping_sec, 'seconds');
+        if(endMoment.valueOf() > refObj.nextTextTime.timeStamp.valueOf())
+        {
+            endMoment = refObj.nextTextTime.timeStamp;
+        }
+
+        cycleData.previousWordIndex = finalWordIndex;
+        cycleData.previousCharacterIndex = finalCharacterIndex;
+        return {
+            timeStamp: endMoment,
+            text: subWordArray.join(" "),
+            isLast: finalWordIndex >= wordsArray.length - 1
+        };
+    }
+
+    let textTime = getTextTimeObj(refObj.text);
+    refObj.nextTextTime = refObj.nextTextTime ?? {timeStamp: moment(refObj.lastPrintedMoment).add(24, 'seconds')};
+    let timeDiff_sec = refObj.nextTextTime.timeStamp.diff(textTime.timeStamp, 'seconds');
+    let wordsArray = textTime.text.split(" ");
+    let numCycles = Math.ceil(timeDiff_sec / refObj.timeGrouping_sec);
+    if(numCycles < 1) numCycles = 1;
+    let cycleData = {
+        numCycles: numCycles,
+        previousWordIndex: 0,
+        previousCharacterIndex: 0,
+    };
+
+    while (true)
+    {
+        debugger;
+        let iterTextTime = getCycleTextTime(wordsArray, refObj, cycleData);
+        let numLinesPerSubtitle = 4;
+        let currentSubtitleIndex = Math.floor(refObj.arr.length / numLinesPerSubtitle);
+        refObj.arr.push(`${currentSubtitleIndex}`);
+        refObj.arr.push(`\n${refObj.lastPrintedMoment.format('HH:mm:ss,SSS')} --> ${iterTextTime.timeStamp.format('HH:mm:ss,SSS')}`);
+        refObj.arr.push(`\n${iterTextTime.text}`);
+        refObj.arr.push(`\n\n`);
+        refObj.lastPrintedMoment = iterTextTime.timeStamp;
+        if(iterTextTime.isLast)
+        {
+            break;
         }
     }
 }, (transArray)=>{
