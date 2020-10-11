@@ -137,26 +137,22 @@ getTimeAccountedTranscript(6.0,(refObj) => {
         return;
     }
 
-    function getFinalCharacterIndex(text, numCycles, previousCharacterIndex)
+    function getFinalCharacterIndex(text, cycleData)
     {
-        let numCharactersPerCycle = Math.ceil(text.length / numCycles);
-        let finalCharacterIndex = previousCharacterIndex + numCharactersPerCycle;
+        let numCharactersPerCycle = Math.ceil(text.length / cycleData.numCycles);
+        let finalCharacterIndex = cycleData.previousCharacterIndex + numCharactersPerCycle;
+
+        let backwardFinal = finalCharacterIndex;
         while(true) {
-            if(finalCharacterIndex >= text.length)
+            if(text[backwardFinal] === " ")
             {
-                finalCharacterIndex = text.length - 1;
+                backwardFinal--;
                 break;
             }
 
-            if(text[finalCharacterIndex] === " ")
-            {
-                finalCharacterIndex--;
-                break;
-            }
-
-            finalCharacterIndex++;
+            backwardFinal++;
         }
-        return finalCharacterIndex;
+        return backwardFinal;
     }
 
     function getFinalWordIndex(text, finalCharacterIndex)
@@ -180,10 +176,10 @@ getTimeAccountedTranscript(6.0,(refObj) => {
     function getCycleTextTime(wordsArray, refObj, cycleData)
     {
         let firstWordIndex = cycleData.previousWordIndex > 0 ? cycleData.previousWordIndex + 1 : 0;
-        let finalCharacterIndex = getFinalCharacterIndex(refObj.textTime.text, cycleData.numCycles, cycleData.previousCharacterIndex);
+        let finalCharacterIndex = getFinalCharacterIndex(refObj.textTime.text, cycleData);
         let finalWordIndex = getFinalWordIndex(refObj.textTime.text, finalCharacterIndex);
         let subWordArray = wordsArray.slice(firstWordIndex, finalWordIndex + 1);
-        let endMoment = moment(refObj.lastPrintedMoment).add(refObj.timeGrouping_sec, 'seconds');
+        let endMoment = moment(refObj.lastPrintedMoment).add(cycleData.cycleTime_sec, 'seconds');
         if(endMoment.valueOf() > refObj.nextTextTime.timeStamp.valueOf())
         {
             endMoment = refObj.nextTextTime.timeStamp;
@@ -202,17 +198,18 @@ getTimeAccountedTranscript(6.0,(refObj) => {
     refObj.nextTextTime = refObj.nextTextTime ?? {timeStamp: moment(refObj.lastPrintedMoment).add(24, 'seconds')};
     let timeDiff_sec = refObj.nextTextTime.timeStamp.diff(textTime.timeStamp, 'seconds');
     let wordsArray = textTime.text.split(" ");
-    let numCycles = Math.ceil(timeDiff_sec / refObj.timeGrouping_sec);
+    let cycleTime_sec = timeDiff_sec / refObj.timeGrouping_sec;
+    let numCycles = Math.ceil(cycleTime_sec);
     if(numCycles < 1) numCycles = 1;
     let cycleData = {
+        cycleTime_sec: cycleTime_sec,
         numCycles: numCycles,
         previousWordIndex: 0,
         previousCharacterIndex: 0,
     };
 
-    while (true)
+    for (let i=0; i < cycleData.numCycles; i++)
     {
-        debugger;
         let iterTextTime = getCycleTextTime(wordsArray, refObj, cycleData);
         let numLinesPerSubtitle = 4;
         let currentSubtitleIndex = Math.floor(refObj.arr.length / numLinesPerSubtitle);
