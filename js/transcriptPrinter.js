@@ -39,31 +39,42 @@ let getTextTimeObj = function(text)
     return null;
 }
 
-let getTimeAccountedTranscript = function(timeGrouping_sec, onGetText, onGetTranscript)
+let getTimeAccountedText = async function(timeGrouping_sec, outputLength_sec, onGetText, onGetTranscript)
 {
+    console.log("getting script...")
+    let getScript = function (url) {
+        return new Promise(function(resolve, reject) {
+            $.getScript(url).done(function (script) {
+                resolve(script);
+            });
+        });
+    };
     let momentUrl = "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js";
-    $.getScript(momentUrl, function (data) {
+    await getScript(momentUrl);
+    console.log("got script...")
+    let DILATION_FACTOR = outputLength_sec / document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].duration;
 
-        let DILATION_FACTOR = 720 / document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].duration;
+    let refObj = {};
+    refObj.arr = [];
+    refObj.lastPrintedMoment = moment("01/01/2000 00:00:00");
+    refObj.timeGrouping_sec = timeGrouping_sec;
+    let elms = $(".cielo24-vwrap-sentence");
+    for (let i = 0; i < elms.length; i++) {
+        elms[i].id = `transcript-id-${i}`;
+    }
+    for (let i = 0; i < elms.length; i++) {
+        refObj.sentenceWrapperId = elms[i].id;
+        refObj.text = elms[i].innerText;
+        refObj.textTime = getTextTimeObj(refObj.text);
+        refObj.textTime.start_ms = $(elms[i]).data('start-time') * DILATION_FACTOR;
+        refObj.textTime.end_ms = $(elms[i]).data('end-time') * DILATION_FACTOR;
+        refObj.textTime.timeDiff_ms = $(elms[i]).data('end-time') - $(elms[i]).data('start-time');
+        refObj.textTime.startTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.start_ms, 'ms');
+        refObj.textTime.endTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.end_ms, 'ms');
+        await onGetText(refObj);
+    }
 
-        let refObj = {};
-        refObj.arr = [];
-        refObj.lastPrintedMoment = moment("01/01/2000 00:00:00");
-        refObj.timeGrouping_sec = timeGrouping_sec;
-        let elms = $(".cielo24-vwrap-sentence");
-        for (let i = 0; i < elms.length; i++) {
-            refObj.text = elms[i].innerText;
-            refObj.textTime = getTextTimeObj(refObj.text);
-            refObj.textTime.start_ms = $(elms[i]).data('start-time') * DILATION_FACTOR;
-            refObj.textTime.end_ms = $(elms[i]).data('end-time') * DILATION_FACTOR;
-            refObj.textTime.timeDiff_ms = $(elms[i]).data('end-time') - $(elms[i]).data('start-time');
-            refObj.textTime.startTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.start_ms, 'ms');
-            refObj.textTime.endTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.end_ms, 'ms');
-            onGetText(refObj);
-        }
-
-        onGetTranscript(refObj.arr);
-    });
+    onGetTranscript(refObj.arr);
 }
 
 let makePdf = function (textToPrint) {
@@ -115,7 +126,8 @@ function makeSubtitles(subtitleTextArray)
     URL.revokeObjectURL(a.href);
 }
 
-getTimeAccountedTranscript(30, (refObj)=>{
+async function onGetText_Transcript(refObj)
+{
     if (!refObj.text) {
         return;
     }
@@ -130,14 +142,10 @@ getTimeAccountedTranscript(30, (refObj)=>{
         refObj.lastPrintedMoment = refObj.textTime.timeStamp;
     }
     refObj.arr.push(`\n${refObj.text}`);
-}, (transArray)=>{
-    if(transArray)
-    {
-        makePdf(transArray.join(" "));
-    }
-});
+}
 
-getTimeAccountedTranscript(6.0,(refObj) => {
+async function onGetText_Subtitles(refObj)
+{
     if (!refObj.text) {
         return;
     }
@@ -182,13 +190,55 @@ getTimeAccountedTranscript(6.0,(refObj) => {
         return wordsLengthArray.length - 1;
     }
 
-    function getCycleTextTime(wordsArray, refObj, cycleData)
+    function getWordTimeOffset_ms()
+    {
+        try
+        {
+            let text = $(document.getElementsByClassName("cielo24-vwrap-highlight")[0]).context.nextSibling.data;
+            let timePattern = /^ react-text: ([0-9]{1,9}) $/g;
+            let matches = text.matchAll(timePattern);
+            let captures = matches.next().value;
+
+            return captures[1];
+        }
+        catch {
+            return null;
+        }
+    }
+
+    function getWordElement(sentenceWrapperId, wordIndex)
+    {
+        console.log(sentenceWrapperId);
+        let children = $(document.getElementById(sentenceWrapperId)).context.children;
+        let newArray = [];
+        for (let i =1; i<children.length; i++) //remove first element to exclude the timestamp
+        {
+            newArray.push(children[i]);
+        }
+        return newArray[wordIndex];
+    }
+
+    async function getEndMoment(sentenceWrapperId, wordIndex, startMoment, fallbackAddend_ms)
+    {
+        let wordElm = getWordElement(sentenceWrapperId, wordIndex);
+        wordElm.click();
+        await sleep(10);
+        let offset_ms = getWordTimeOffset_ms() ?? fallbackAddend_ms;
+        return moment(startMoment).add(offset_ms, 'ms');
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function getCycleTextTime(wordsArray, refObj, cycleData)
     {
         let firstWordIndex = cycleData.previousWordIndex > 0 ? cycleData.previousWordIndex + 1 : 0;
         let finalCharacterIndex = getFinalCharacterIndex(refObj.textTime.text, cycleData);
         let finalWordIndex = getFinalWordIndex(refObj.textTime.text, finalCharacterIndex);
         let subWordArray = wordsArray.slice(firstWordIndex, finalWordIndex + 1);
-        let endMoment = moment(refObj.lastPrintedMoment).add(cycleData.cycleTime_sec, 'seconds');
+        let endMoment = await getEndMoment(refObj.sentenceWrapperId, finalWordIndex, refObj.textTime.startTimeStamp, cycleData.cycleTime_sec * 1000);
+
         let isLast = finalWordIndex >= wordsArray.length - 1
         if(isLast)
         {
@@ -218,7 +268,7 @@ getTimeAccountedTranscript(6.0,(refObj) => {
 
     for (let i = 0; i < cycleData.numCycles; i++)
     {
-        let iterTextTime = getCycleTextTime(wordsArray, refObj, cycleData);
+        let iterTextTime = await getCycleTextTime(wordsArray, refObj, cycleData);
         let numLinesPerSubtitle = 4;
         let currentSubtitleIndex = Math.floor(refObj.arr.length / numLinesPerSubtitle);
         let startTime = i === 0 ? refObj.textTime.startTimeStamp : refObj.lastPrintedMoment;
@@ -234,13 +284,21 @@ getTimeAccountedTranscript(6.0,(refObj) => {
             break;
         }
     }
-}, (transArray)=>{
+}
+
+getTimeAccountedText(30, 1, onGetText_Transcript, (transArray)=>{
+    if(transArray)
+    {
+        makePdf(transArray.join(" "));
+    }
+});
+
+getTimeAccountedText(6.0, 100 * 60 + 30, onGetText_Subtitles, (transArray)=>{
     if(transArray)
     {
         makeSubtitles(transArray);
     }
 });
-
 
 //todo: provide opt to remove timestamps
 //todo: print to .pdf file
