@@ -1,3 +1,11 @@
+let getScript = function (url) {
+    return new Promise(function(resolve, reject) {
+        $.getScript(url).done(function (script) {
+            resolve(script);
+        });
+    });
+};
+
 let getRawTranscript = function()
 {
     let arr = [];
@@ -39,69 +47,68 @@ let getTextTimeObj = function(text)
     return null;
 }
 
-let getTimeAccountedTranscript = function(timeGrouping_sec, onGetText, onGetTranscript)
+let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDuration_sec, onGetTextLine)
 {
     let momentUrl = "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js";
-    $.getScript(momentUrl, function (data) {
+    await getScript(momentUrl);
 
-        let DILATION_FACTOR = 720 / document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].duration;
+    videoDuration_sec = videoDuration_min * 60 + videoDuration_sec;
+    let DILATION_FACTOR = videoDuration_sec / document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].duration;
 
-        let refObj = {};
-        refObj.arr = [];
-        refObj.lastPrintedMoment = moment("01/01/2000 00:00:00");
-        refObj.timeGrouping_sec = timeGrouping_sec;
-        let elms = $(".cielo24-vwrap-sentence");
-        for (let i = 0; i < elms.length; i++) {
-            refObj.text = elms[i].innerText;
-            refObj.textTime = getTextTimeObj(refObj.text);
-            refObj.textTime.start_ms = $(elms[i]).data('start-time') * DILATION_FACTOR;
-            refObj.textTime.end_ms = $(elms[i]).data('end-time') * DILATION_FACTOR;
-            refObj.textTime.timeDiff_ms = $(elms[i]).data('end-time') - $(elms[i]).data('start-time');
-            refObj.textTime.startTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.start_ms, 'ms');
-            refObj.textTime.endTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.end_ms, 'ms');
-            onGetText(refObj);
-        }
+    let refObj = {};
+    refObj.arr = [];
+    refObj.lastPrintedMoment = moment("01/01/2000 00:00:00");
+    refObj.timeGrouping_sec = timeGrouping_sec;
+    let elms = $(".cielo24-vwrap-sentence");
+    for (let i = 0; i < elms.length; i++) {
+        refObj.text = elms[i].innerText;
+        refObj.textTime = getTextTimeObj(refObj.text);
+        refObj.textTime.start_ms = $(elms[i]).data('start-time') * DILATION_FACTOR;
+        refObj.textTime.end_ms = $(elms[i]).data('end-time') * DILATION_FACTOR;
+        refObj.textTime.timeDiff_ms = $(elms[i]).data('end-time') - $(elms[i]).data('start-time');
+        refObj.textTime.startTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.start_ms, 'ms');
+        refObj.textTime.endTimeStamp = moment('01/01/2000 00:00:00').add(refObj.textTime.end_ms, 'ms');
+        onGetTextLine(refObj);
+    }
 
-        onGetTranscript(refObj.arr);
-    });
+    return refObj.arr;
 }
 
-let makePdf = function (textToPrint) {
+let makePdf = async function (textToPrint) {
     let jsPDFUrl = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.2/jspdf.min.js";
-    $.getScript(jsPDFUrl, function (data) {
-        let doc = new jsPDF();
-        doc.setFontSize(12);
-        doc.setTextColor(0,0,0);
-        let defaultTextPos = {x: 18, y: 18};
-        let textPos = {x: defaultTextPos.x, y: defaultTextPos.y};
+    await getScript(jsPDFUrl);
+    let doc = new jsPDF();
+    doc.setFontSize(12);
+    doc.setTextColor(0,0,0);
+    let defaultTextPos = {x: 18, y: 18};
+    let textPos = {x: defaultTextPos.x, y: defaultTextPos.y};
 
-        let applyNewLine = function (height, lineCount, textPos) {
-            lineCount = lineCount || 1;
-            for (let i = 0; i < lineCount; i++) {
-                textPos.y += height;
-            }
-        };
-        let writeLine = function (doc, line, lineHeight, textPos) {
-            doc.text(textPos.x, textPos.y, line);
-            applyNewLine(lineHeight, 1, textPos);
-        };
-        let writeLines = function (doc, text, lineHeight, lineWidth, textPos) {
-            let lines = doc.splitTextToSize(text, lineWidth);
-            for (let i = 0; i < lines.length; i++) {
-                if (textPos.y > doc.internal.pageSize.height - lineHeight * 2) {
-                    resetTextPos(textPos);
-                    doc.addPage();
-                }
-                writeLine(doc, lines[i], lineHeight, textPos);
-            }
-        };
-        let resetTextPos = function (textPos) {
-            textPos.x = defaultTextPos.x;
-            textPos.y = defaultTextPos.y;
+    let applyNewLine = function (height, lineCount, textPos) {
+        lineCount = lineCount || 1;
+        for (let i = 0; i < lineCount; i++) {
+            textPos.y += height;
         }
-        writeLines(doc, textToPrint, 6, 175, textPos);
-        doc.save(getFileName("pdf"));
-    });
+    };
+    let writeLine = function (doc, line, lineHeight, textPos) {
+        doc.text(textPos.x, textPos.y, line);
+        applyNewLine(lineHeight, 1, textPos);
+    };
+    let writeLines = function (doc, text, lineHeight, lineWidth, textPos) {
+        let lines = doc.splitTextToSize(text, lineWidth);
+        for (let i = 0; i < lines.length; i++) {
+            if (textPos.y > doc.internal.pageSize.height - lineHeight * 2) {
+                resetTextPos(textPos);
+                doc.addPage();
+            }
+            writeLine(doc, lines[i], lineHeight, textPos);
+        }
+    };
+    let resetTextPos = function (textPos) {
+        textPos.x = defaultTextPos.x;
+        textPos.y = defaultTextPos.y;
+    }
+    writeLines(doc, textToPrint, 6, 175, textPos);
+    doc.save(getFileName("pdf"));
 }
 
 function makeSubtitles(subtitleTextArray)
@@ -115,7 +122,8 @@ function makeSubtitles(subtitleTextArray)
     URL.revokeObjectURL(a.href);
 }
 
-getTimeAccountedTranscript(30, (refObj)=>{
+function onGetTextLine_Transcript(refObj)
+{
     if (!refObj.text) {
         return;
     }
@@ -130,14 +138,10 @@ getTimeAccountedTranscript(30, (refObj)=>{
         refObj.lastPrintedMoment = refObj.textTime.timeStamp;
     }
     refObj.arr.push(`\n${refObj.text}`);
-}, (transArray)=>{
-    if(transArray)
-    {
-        makePdf(transArray.join(" "));
-    }
-});
+}
 
-getTimeAccountedTranscript(6.0,(refObj) => {
+function onGetTextLine_Subtitles(refObj)
+{
     if (!refObj.text) {
         return;
     }
@@ -234,13 +238,13 @@ getTimeAccountedTranscript(6.0,(refObj) => {
             break;
         }
     }
-}, (transArray)=>{
-    if(transArray)
-    {
-        makeSubtitles(transArray);
-    }
-});
+}
+let getFiles = async function()
+{
+    let transcriptArray = await getTextArray(30, 1, 1, onGetTextLine_Transcript);
+    makePdf(transcriptArray.join(" "));
 
-
-//todo: provide opt to remove timestamps
-//todo: print to .pdf file
+    let subtitleArray = await getTextArray(6.0, 10, 60, onGetTextLine_Subtitles);
+    makeSubtitles(subtitleArray);
+}
+getFiles();
