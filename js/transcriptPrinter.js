@@ -143,7 +143,7 @@ async function onGetText_Transcript(refObj)
     }
     refObj.arr.push(`\n${refObj.text}`);
 }
-
+let lastTime = 0;
 async function onGetText_Subtitles(refObj)
 {
     if (!refObj.text) {
@@ -190,29 +190,19 @@ async function onGetText_Subtitles(refObj)
         return wordsLengthArray.length - 1;
     }
 
-    function getWordTimeOffset_ms()
-    {
-        try
-        {
-            let text = $(document.getElementsByClassName("cielo24-vwrap-highlight")[0]).context.nextSibling.data;
-            let timePattern = /^ react-text: ([0-9]{1,9}) $/g;
-            let matches = text.matchAll(timePattern);
-            let captures = matches.next().value;
-
-            return captures[1];
-        }
-        catch {
-            return null;
-        }
-    }
-
     function getWordElement(sentenceWrapperId, wordIndex)
     {
-        console.log(sentenceWrapperId);
         let children = $(document.getElementById(sentenceWrapperId)).context.children;
         let newArray = [];
-        for (let i =1; i<children.length; i++) //remove first element to exclude the timestamp
+        //exclude the timestamp (first element)
+        //exclude punctuation
+        for (let i =1; i<children.length; i++)
         {
+            let trimmed = children[i].innerText.trimEnd();
+            if(trimmed === "," || trimmed === ";" || trimmed === ".")
+            {
+                continue;
+            }
             newArray.push(children[i]);
         }
         return newArray[wordIndex];
@@ -223,8 +213,13 @@ async function onGetText_Subtitles(refObj)
         let wordElm = getWordElement(sentenceWrapperId, wordIndex);
         wordElm.click();
         await sleep(10);
-        let offset_ms = getWordTimeOffset_ms() ?? fallbackAddend_ms;
-        return moment(startMoment).add(offset_ms, 'ms');
+        let currentTime = document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].currentTime;
+        if(currentTime === lastTime)
+        {
+            return moment(startMoment).add(fallbackAddend_ms, 'ms');
+        }
+        lastTime = currentTime;
+        return moment("01/01/2000 00:00:00").add(currentTime, 's');
     }
 
     function sleep(ms) {
@@ -240,7 +235,8 @@ async function onGetText_Subtitles(refObj)
         let endMoment = await getEndMoment(refObj.sentenceWrapperId, finalWordIndex, refObj.textTime.startTimeStamp, cycleData.cycleTime_sec * 1000);
 
         let isLast = finalWordIndex >= wordsArray.length - 1
-        if(isLast)
+        let isEndMomentLater = endMoment.diff(refObj.textTime.endTimeStamp, 'ms') < 0;
+        if(isLast || isEndMomentLater)
         {
             endMoment = refObj.textTime.endTimeStamp;
         }
