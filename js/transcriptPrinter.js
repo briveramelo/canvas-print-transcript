@@ -18,12 +18,12 @@ let getRawTranscript = function()
     return arr.join(" ");
 }
 
-function getFileName(extension)
+function getFileName(className, extension)
 {
     let title = document.getElementsByClassName("comp titleLabel pull-left")[0].innerText;
     let titleNum = title.split(" ")[0];
     let titleLabel = title.substring(titleNum.length, title.length).replace("-", "").replace(/\s+/g, '').replace(",","");
-    return `${titleNum}_mgt6051_${titleLabel}.${extension}`;
+    return `${titleNum}_${className}_${titleLabel}.${extension}`;
 }
 
 let getTextTimeObj = function(text)
@@ -47,12 +47,18 @@ let getTextTimeObj = function(text)
     return null;
 }
 
+function isFunction(functionToCheck) {
+    return functionToCheck && {}.toString.call(functionToCheck) === '[object Function]';
+}
+
 let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDuration_sec, onGetTextLine)
 {
     let momentUrl = "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js";
     await getScript(momentUrl);
 
-    videoDuration_sec = videoDuration_min * 60 + videoDuration_sec;
+    videoDuration_sec = Number.isNaN(videoDuration_min) ? 1 : videoDuration_min * 60 + videoDuration_sec;
+    onGetTextLine = isFunction(onGetTextLine) ? onGetTextLine : videoDuration_min;
+
     let DILATION_FACTOR = videoDuration_sec / document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].duration;
 
     let refObj = {};
@@ -74,7 +80,7 @@ let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDura
     return refObj.arr;
 }
 
-let makePdf = async function (textToPrint) {
+let makePdf = async function (className, textToPrint) {
     let jsPDFUrl = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.2/jspdf.min.js";
     await getScript(jsPDFUrl);
     let doc = new jsPDF();
@@ -108,16 +114,16 @@ let makePdf = async function (textToPrint) {
         textPos.y = defaultTextPos.y;
     }
     writeLines(doc, textToPrint, 6, 175, textPos);
-    doc.save(getFileName("pdf"));
+    doc.save(getFileName(className, "pdf"));
 }
 
-function makeSubtitles(subtitleTextArray)
+function makeSubtitles(className, subtitleTextArray)
 {
     let file = new Blob(subtitleTextArray,{ type: "text/plain;charset=utf-8" });
     const a = document.createElement('a');
     a.href= URL.createObjectURL(file);
 
-    a.download = getFileName("srt");
+    a.download = getFileName(className, "srt");
     a.click();
     URL.revokeObjectURL(a.href);
 }
@@ -239,12 +245,11 @@ function onGetTextLine_Subtitles(refObj)
         }
     }
 }
-let getFiles = async function()
+let getFiles = async function(className)
 {
-    let transcriptArray = await getTextArray(30, 1, 1, onGetTextLine_Transcript);
-    makePdf(transcriptArray.join(" "));
-
-    let subtitleArray = await getTextArray(6.0, 10, 60, onGetTextLine_Subtitles);
-    makeSubtitles(subtitleArray);
+    let transcriptArray = await getTextArray(30, onGetTextLine_Transcript);
+    makePdf(className, transcriptArray.join(" "));
+    // let subtitleArray = await getTextArray(6.0, 10, 60, onGetTextLine_Subtitles);
+    // makeSubtitles(className, subtitleArray);
 }
-getFiles();
+getFiles("ois6040");
