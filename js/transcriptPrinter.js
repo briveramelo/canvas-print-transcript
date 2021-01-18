@@ -5,17 +5,8 @@ let getScript = function (url) {
         });
     });
 };
-
-let getRawTranscript = function()
-{
-    let arr = [];
-    let elms = $(".cielo24-vwrap-sentence");
-    for (let i = 0; i < elms.length; i++) {
-        if (elms[i].innerText) {
-            arr.push(elms[i].innerText);
-        }
-    }
-    return arr.join(" ");
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function getFileName(className, extension)
@@ -53,8 +44,12 @@ function isFunction(functionToCheck) {
 
 let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDuration_sec, onGetTextLine)
 {
-    let momentUrl = "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js";
-    await getScript(momentUrl);
+    if(!isMomentLoaded)
+    {
+        let momentUrl = "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js";
+        await getScript(momentUrl);
+        isMomentLoaded = true;
+    }
 
     videoDuration_sec = Number.isNaN(videoDuration_min) ? 1 : videoDuration_min * 60 + videoDuration_sec;
     onGetTextLine = isFunction(onGetTextLine) ? onGetTextLine : videoDuration_min;
@@ -80,9 +75,14 @@ let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDura
     return refObj.arr;
 }
 
-let makePdf = async function (className, textToPrint) {
-    let jsPDFUrl = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.2/jspdf.min.js";
-    await getScript(jsPDFUrl);
+let makePdf = async function (fileName, textToPrint) {
+    if(!isJsPdfLoaded)
+    {
+        let jsPDFUrl = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.2/jspdf.min.js";
+        await getScript(jsPDFUrl);
+        isJsPdfLoaded = true;
+    }
+
     let doc = new jsPDF();
     doc.setFontSize(12);
     doc.setTextColor(0,0,0);
@@ -114,21 +114,21 @@ let makePdf = async function (className, textToPrint) {
         textPos.y = defaultTextPos.y;
     }
     writeLines(doc, textToPrint, 6, 175, textPos);
-    doc.save(getFileName(className, "pdf"));
+    doc.save(fileName);
 }
 
-function makeSubtitles(className, subtitleTextArray)
+function makeSubtitles(fileName, subtitleTextArray)
 {
     let file = new Blob(subtitleTextArray,{ type: "text/plain;charset=utf-8" });
     const a = document.createElement('a');
     a.href= URL.createObjectURL(file);
 
-    a.download = getFileName(className, "srt");
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
 }
 
-function onGetTextLine_Transcript(refObj)
+function onGetTextLine_Pdf(refObj)
 {
     if (!refObj.text) {
         return;
@@ -245,11 +245,102 @@ function onGetTextLine_Subtitles(refObj)
         }
     }
 }
-let getFiles = async function(className)
+let getPdf = async function(fileName)
 {
-    let transcriptArray = await getTextArray(30, onGetTextLine_Transcript);
-    makePdf(className, transcriptArray.join(" "));
-    // let subtitleArray = await getTextArray(6.0, 10, 60, onGetTextLine_Subtitles);
-    // makeSubtitles(className, subtitleArray);
+    let transcriptArray = await getTextArray(30, onGetTextLine_Pdf);
+    await makePdf(fileName, transcriptArray.join(" "));
 }
-getFiles("ois6040");
+
+let getSubtitles = async function(fileName, videoDuration)
+{
+    let subtitleArray = await getTextArray(6.0, videoDuration.m, videoDuration.s, onGetTextLine_Subtitles);
+    makeSubtitles(fileName, subtitleArray);
+}
+
+async function tryLoadNextVideoRecursive()
+{
+    if(!isDownloadPdf && !isDownloadSubtitles)
+    {
+        console.error("must set to download pdf or transcript. nothing will occur with both set to false");
+        return;
+    }
+
+    if(videoDurations.length !== videoLinks.length)
+    {
+        console.error("videoDurations and videoLinks must be the same length");
+        console.error(`${videoDurations.length}!=${videoLinks.length}`);
+        return;
+    }
+
+    videoIndex++;
+    if(videoIndex >= videoLinks.length)
+    {
+        console.log('final transcript loaded');
+        return;
+    }
+
+    //call this to clear the current history of url queries to start fresh for the next download
+    performance.clearResourceTimings();
+    videoLinks[videoIndex].click();
+    await sleep(loadingDelay_ms);
+    let actions = [];
+    if(isDownloadPdf)
+    {
+        actions.push(getPdf(getFileName(className, "pdf")));
+    }
+    if(isDownloadSubtitles)
+    {
+        actions.push(getSubtitles(getFileName(className, "srt"), videoDurations[videoIndex]));
+    }
+    if(actions.length > 0)
+    {
+        await Promise.all(actions);
+        console.log(`Transcript loaded: ${videoIndex + 1}/${videoLinks.length} complete.`);
+    }
+    tryLoadNextVideoRecursive();
+}
+
+function loadPlaylistTranscripts()
+{
+    videoLinks = $('.chapterBox.mediaBox');
+    tryLoadNextVideoRecursive();
+}
+
+function loadCurrentTranscript()
+{
+    videoLinks = $('.chapterBox.mediaBox.active');
+    tryLoadNextVideoRecursive();
+}
+
+//globals
+var videoLinks = [];
+var videoIndex = -1;
+var isMomentLoaded = false;
+var isJsPdfLoaded = false;
+
+
+//options
+var className = "ois6040";
+var loadingDelay_ms = 5000;
+var videoDurations = [ //video durations are only used for the .srt file transcript to adjust for duration differences between downloaded video length and original canvas video length
+    {m:555,s:555},//1
+    {m:555,s:555},//2
+    {m:555,s:555},//3
+    {m:555,s:555},//4
+    {m:555,s:555},//5
+    {m:555,s:555},//6
+    {m:555,s:555},//7
+    {m:555,s:555},//8
+    {m:555,s:555},//9
+    {m:555,s:555},//10
+    {m:555,s:555},//11
+    {m:555,s:555},//12
+    {m:555,s:555},//13
+    {m:555,s:555},//14
+    {m:555,s:555},//15
+];
+var isDownloadPdf = true;
+var isDownloadSubtitles = true;
+
+loadPlaylistTranscripts();
+// loadCurrentTranscript();
