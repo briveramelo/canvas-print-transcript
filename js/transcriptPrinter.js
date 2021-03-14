@@ -303,12 +303,20 @@ async function tryLoadNextVideoRecursive()
 function loadPlaylistTranscripts()
 {
     videoLinks = $('.chapterBox.mediaBox');
+    if(videoLinks.length == 0)
+    {
+        videoLinks = $('.btn.comp.playPauseBtn.display-high.icon-play');
+    }
     tryLoadNextVideoRecursive();
 }
 
 function loadCurrentTranscript()
 {
     videoLinks = $('.chapterBox.mediaBox.active');
+    if(videoLinks.length == 0)
+    {
+        videoLinks = $('.btn.comp.playPauseBtn.display-high.icon-play');
+    }
     tryLoadNextVideoRecursive();
 }
 
