@@ -265,7 +265,7 @@ async function tryLoadNextVideoRecursive()
         return;
     }
 
-    if(videoDurations.length !== videoLinks.length)
+    if(isDownloadSubtitles && videoDurations.length !== videoLinks.length)
     {
         console.error("videoDurations and videoLinks must be the same length");
         console.error(`${videoDurations.length}!=${videoLinks.length}`);
