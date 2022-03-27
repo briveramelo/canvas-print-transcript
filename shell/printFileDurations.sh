@@ -16,14 +16,14 @@ function round()
   echo $(printf %."$2"f $(echo "scale=$2;(((10^$2)*$1)+0.5)/(10^$2)" | bc))
 };
 
-function getMinSec()
+function getHourMinSec()
 {
   local file=$1
   local duration=$(ffmpeg -i "${file}" 2>&1 | grep Duration | sed 's/Duration: \(.*\), start/\1/' | grep -o -E '[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{2}')
   local sec=$(round "$(echo "$duration" | grep -o -E '[0-9]{2}\.[0-9]{2}')" 0)
   local hour=$(echo "$duration" | grep -o -E '^[0-9]{2}')
   local min=$(echo "$duration" | sed -n -E "s/^$hour:([0-9]{2}).*/\1/p")
-  echo "{m:$min,s:$sec},"
+  echo "{h:$hour,m:$min,s:$sec},"
 }
 
 VIDEO_URLS_INPUT_PATH=$1
@@ -43,12 +43,12 @@ function run()
       if ! [[ ${files[$i]} =~ ^"$prefix".*$ ]] || ! [[ ${files[$i]} =~ .*\.mp4 ]]; then
         continue
       fi
-      echo "$(getMinSec "$file")"
+      echo "$(getHourMinSec "$file")"
     done
   else
     echo "printing video duration"
     file=$VIDEO_URLS_INPUT_PATH
-    echo $(getMinSec "$file")
+    echo $(getHourMinSec "$file")
   fi
 }
 

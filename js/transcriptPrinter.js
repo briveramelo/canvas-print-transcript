@@ -42,7 +42,33 @@ function isFunction(functionToCheck) {
     return functionToCheck && {}.toString.call(functionToCheck) === '[object Function]';
 }
 
-let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDuration_sec, onGetTextLine)
+function hasKeys(obj, expectedKeysArray) {
+    if (!Array.isArray(expectedKeysArray))
+    {
+        return false;
+    }
+
+    let keys = Object.keys(obj);
+    for(let i = 0; i < keys.length; i++)
+    {
+        if(!obj.hasOwnProperty(keys[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+function durationToSec(duration)
+{
+    if(!hasKeys(duration, ['h','m','s']))
+    {
+        console.error('duration object must have h,m,s keys generated from the printFileDurations.sh script');
+        return null;
+    }
+    return duration.s + duration.m * 60 + duration.h * 60 * 60;
+}
+
+let getTextArray = async function(timeGrouping_sec, videoDuration, onGetTextLine)
 {
     if(!isMomentLoaded)
     {
@@ -51,8 +77,8 @@ let getTextArray = async function(timeGrouping_sec, videoDuration_min, videoDura
         isMomentLoaded = true;
     }
 
-    videoDuration_sec = Number.isNaN(videoDuration_min) ? 1 : videoDuration_min * 60 + videoDuration_sec;
-    onGetTextLine = isFunction(onGetTextLine) ? onGetTextLine : videoDuration_min;
+    let videoDuration_sec = Number.isNaN(videoDuration.s) ? 1 : durationToSec(videoDuration);
+    onGetTextLine = isFunction(onGetTextLine) ? onGetTextLine : videoDuration; //redefine input variables as an ugly alternate to function overloads
 
     let DILATION_FACTOR = videoDuration_sec / document.getElementsByClassName("persistentNativePlayer nativeEmbedPlayerPid")[0].duration;
 
@@ -253,7 +279,7 @@ let getPdf = async function(fileName)
 
 let getSubtitles = async function(fileName, videoDuration)
 {
-    let subtitleArray = await getTextArray(6.0, videoDuration.m, videoDuration.s, onGetTextLine_Subtitles);
+    let subtitleArray = await getTextArray(6.0, videoDuration, onGetTextLine_Subtitles);
     makeSubtitles(fileName, subtitleArray);
 }
 
@@ -331,24 +357,32 @@ var isJsPdfLoaded = false;
 var className = "ois6040";
 var loadingDelay_ms = 5000;
 var videoDurations = [ //video durations are only used for the .srt file transcript to adjust for duration differences between downloaded video length and original canvas video length
-    {m:555,s:555},//1
-    {m:555,s:555},//2
-    {m:555,s:555},//3
-    {m:555,s:555},//4
-    {m:555,s:555},//5
-    {m:555,s:555},//6
-    {m:555,s:555},//7
-    {m:555,s:555},//8
-    {m:555,s:555},//9
-    {m:555,s:555},//10
-    {m:555,s:555},//11
-    {m:555,s:555},//12
-    {m:555,s:555},//13
-    {m:555,s:555},//14
-    {m:555,s:555},//15
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},
+    {h:555,m:555,s:555},//10
 ];
 var isDownloadPdf = true;
 var isDownloadSubtitles = true;
 
 loadPlaylistTranscripts();
 // loadCurrentTranscript();
+
+// notes for non-standard video html element:
+// CC closed captions appear in an html element with a class called '.captionContainer'
+// Opt+Cmd+F with this class returns a file from cdnisec.kaltura called 'load.php', though it appears to be js
+// when putting a breakpoint in a function called 'addCaption'
+// the variable 'source.captions' is an array holding all text and timestamps of appearance
+// the text includes html elements like '<br>'
+// ultimately triggered from a native callback called 'loadEmbeddedCaptions'
+/*function onlyUnique(value, index, self) {
+    return self.indexOf(value) === index;
+}
+let playlistUrl = performance.getEntriesByType("resource").filter(item=>item.name.includes("index.m3u8?Policy")).map(item=>item.name).filter(onlyUnique)[0];
+ */
